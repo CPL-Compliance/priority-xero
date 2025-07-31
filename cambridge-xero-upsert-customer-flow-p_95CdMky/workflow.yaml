@@ -1,0 +1,109 @@
+schema: workflow/2022.04
+name: Cambridge - Xero Upsert Customer Flow
+triggers:
+- id: hi_R3HQLpZ
+steps:
+- namespace: pipedream_notification
+  runtime: python3.12
+  uses: "./pipedream_notification/entry.py"
+- namespace: GET_contact_from_Xero
+  runtime: nodejs20.x
+  uses: "./GET_contact_from_Xero/entry.js"
+  props:
+    tenant_id: "{{steps.trigger.event.body.event_details.tenantId}}"
+    contact_id: "{{steps.trigger.event.body.event_details.resourceId}}"
+    access_token: "{{steps.trigger.event.headers.new_xero_token}}"
+- namespace: get_history_dates
+  runtime: nodejs20.x
+  uses: "./get_history_dates/entry.js"
+  props:
+    tenant_id: "{{steps.trigger.event.body.event_details.tenantId}}"
+    access_token: "{{steps.trigger.event.headers.new_xero_token}}"
+    contact_guid: "{{steps.GET_contact_from_Xero.$return_value.Contacts[0].ContactID}}"
+    contact_updated_date: "{{steps.GET_contact_from_Xero.$return_value.Contacts[0].UpdatedDateUTC}}"
+- namespace: get_token_complyt
+  runtime: nodejs18.x
+  uses: http-custom-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: none
+        username: ''
+        password: ''
+        token: ''
+      body:
+        contentType: application/json
+        fields:
+        - name: clientId
+          value: "{{steps.trigger.event.headers.complyt_client_id}}"
+        - name: clientSecret
+          value: "{{steps.trigger.event.headers.complyt_client_secret}}"
+        - name: ''
+          value: ''
+          disabled: true
+        mode: fields
+        type: fields
+      headers:
+      - name: ''
+        value: ''
+        disabled: true
+      method: POST
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://{{steps.trigger.event.headers.complyt_api_environment}}.complyt.io/v1/token
+      tab: Body
+- namespace: try_get_customer
+  runtime: nodejs20.x
+  uses: "./try_get_customer/entry.js"
+  props:
+    complyt_api_environment: "{{steps.trigger.event.headers.complyt_api_environment}}"
+    contactID: "{{steps.GET_contact_from_Xero.$return_value.Contacts[0].ContactID}}"
+    accessToken: "{{steps.get_token_complyt.$return_value.accessToken}}"
+- namespace: data_mapper
+  runtime: nodejs20.x
+  uses: "./data_mapper/entry.js"
+- namespace: put_customer
+  runtime: nodejs20.x
+  uses: http-custom-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: bearer
+        username: ''
+        password: ''
+        token: "{{steps.get_token_complyt.$return_value.accessToken}}"
+      body:
+        contentType: application/json
+        fields:
+        - name: ''
+          value: ''
+          disabled: true
+        mode: raw
+        type: raw
+        raw: |-
+          {
+             "externalId": "{{steps.GET_contact_from_Xero["$return_value"].Contacts[0].ContactID}}",
+              "source": "6",
+              "name": "{{steps.GET_contact_from_Xero["$return_value"].Contacts[0].Name}}",
+              "address": {{steps.data_mapper["$return_value"].address}},
+                 "email": "{{steps.data_mapper["$return_value"].email}}",
+                 "externalTimestamps": {
+                              "createdDate": "{{steps.get_history_dates["$return_value"].contactCreatedDate}}",
+                              "updatedDate": "{{steps.get_history_dates["$return_value"].contactUpdatedDate}}"
+                  },
+                  "customerType": "{{steps.try_get_customer.$return_value.customerType}}"
+          }
+      headers:
+      - name: ''
+        value: ''
+        disabled: true
+      method: PUT
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://{{steps.trigger.event.headers.complyt_api_environment}}.complyt.io/v1/customers/source/6/externalId/{{steps.GET_contact_from_Xero["$return_value"].Contacts[0].ContactID}}
+      tab: Body
+
