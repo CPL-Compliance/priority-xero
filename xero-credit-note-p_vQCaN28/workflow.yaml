@@ -1,0 +1,19 @@
+schema: workflow/2022.04
+name: Xero Credit Note
+settings:
+  error_notification: true
+triggers:
+- id: hi_bGHYalM
+steps:
+- namespace: pipedream_notification
+  runtime: python3.12
+  uses: "./pipedream_notification/entry.py"
+- namespace: code1
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./code1/entry.js"
+- namespace: code
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./code/entry.js"
+

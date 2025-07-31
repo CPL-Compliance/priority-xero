@@ -1,0 +1,37 @@
+schema: workflow/2022.04
+name: Xero Gateway
+settings:
+  error_notification: true
+  lambda_timeout: 149
+  max_event_queue_size: 10000
+  rate_limit_bucket_size_seconds: 2
+triggers:
+- id: dc_1guXxpA
+- id: hi_2VHMVMk
+steps:
+- namespace: Xero_Event_Gateway
+  runtime: nodejs20.x
+  uses: "./Xero_Event_Gateway/entry.js"
+  props:
+    xeroClientConfig:
+      storeId: ds_OxuvJ6
+    data_store:
+      storeId: ds_9PudAG
+    data_store_1:
+      storeId: ds_YNuddeb
+- namespace: HTTP_Calls
+  runtime: nodejs20.x
+  uses: "./HTTP_Calls/entry.js"
+- namespace: complyt_stop_conditions
+  runtime: nodejs20.x
+  uses: "./complyt_stop_conditions/entry.js"
+- namespace: complyt_put_transactions
+  runtime: nodejs20.x
+  uses: "./complyt_put_transactions/entry.js"
+- namespace: xero_stop_conditions
+  runtime: nodejs20.x
+  uses: "./xero_stop_conditions/entry.js"
+- namespace: xero_updated_transaction_2
+  runtime: nodejs20.x
+  uses: "./xero_updated_transaction_2/entry.js"
+

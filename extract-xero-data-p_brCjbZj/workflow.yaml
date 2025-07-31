@@ -1,0 +1,28 @@
+schema: workflow/2022.04
+name: Extract Xero Data
+settings:
+  error_notification: true
+triggers:
+- id: hi_BpH3Jle
+steps:
+- namespace: initialize_xero_sync_parameters
+  runtime: nodejs20.x
+  uses: "./initialize_xero_sync_parameters/entry.js"
+  props:
+    xeroClientConfig:
+      storeId: ds_OxuvJ6
+    xeroAccessTokens:
+      storeId: ds_9PudAG
+    xeroAccessTokensCambridge:
+      storeId: ds_YNuddeb
+- namespace: export_xero_data
+  runtime: nodejs20.x
+  uses: "./export_xero_data/entry.js"
+- namespace: code
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./code/entry.js"
+- namespace: extract_and_flatten_xero_data
+  runtime: nodejs20.x
+  uses: "./extract_and_flatten_xero_data/entry.js"
+

@@ -1,0 +1,37 @@
+schema: workflow/2022.04
+name: CreateXeroTaxRates
+settings:
+  error_notification: true
+triggers:
+- id: hi_XMHrREe
+steps:
+- namespace: get_client_config
+  runtime: python3.12
+  uses: "./get_client_config/entry.py"
+  props:
+    __configurableProps:
+    - name: data_store
+      type: data_store
+    - name: data_store_1
+      type: data_store
+    data_store:
+      storeId: ds_9PudAG
+    data_store_1:
+      storeId: ds_OxuvJ6
+- namespace: get_xero_customers
+  runtime: nodejs20.x
+  uses: "./get_xero_customers/entry.js"
+- namespace: proccess_addresses
+  runtime: python3.12
+  uses: "./proccess_addresses/entry.py"
+- namespace: put_transactions_to_get_rates
+  runtime: nodejs20.x
+  uses: "./put_transactions_to_get_rates/entry.js"
+- namespace: getDistinctTaxRates
+  runtime: nodejs20.x
+  uses: "./getDistinctTaxRates/entry.js"
+- namespace: createXeroRates
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./createXeroRates/entry.js"
+

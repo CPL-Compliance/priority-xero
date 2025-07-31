@@ -1,0 +1,139 @@
+schema: workflow/2022.04
+name: Xero Import Transactions Automated Assessment
+settings:
+  error_notification: true
+  lambda_memory: 512
+  lambda_timeout: 720
+triggers:
+- id: hi_OZHR9al
+steps:
+- namespace: get_xero_access_token
+  runtime: nodejs20.x
+  uses: data_stores-get-all-records@0.0.2
+  props:
+    dataStore:
+      storeId: ds_9PudAG
+- namespace: HTTP_Calls
+  runtime: nodejs20.x
+  uses: "./HTTP_Calls/entry.js"
+- namespace: assessment_data
+  runtime: nodejs20.x
+  uses: "./assessment_data/entry.js"
+- namespace: get_xero_invoices
+  disabled: true
+  runtime: nodejs20.x
+  uses: http-get-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: none
+        username: ''
+        password: ''
+        token:
+      body:
+        contentType: none
+        fields: []
+        mode: fields
+        type: raw
+      headers:
+      - name: xero-tenant-id
+        value: c00c1704-0af5-43ad-94b2-f5ecb56c8957
+      - name: Content-Type
+        value: application/json
+      - name: Accept
+        value: application/json
+      - name: Authorization
+        value: Bearer {{steps.get_xero_access_token.$return_value.Connection.access_token}}
+      method: GET
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://api.xero.com/api.xro/2.0/invoices?where=Type=="ACCREC" AND (Status=="PAID"
+        OR Status=="SUBMITTED" OR Status=="DRAFT" OR Status=="AUTHORISED") AND Date>=DateTime(2022,01,01)
+      tab: Headers
+- namespace: get_xero_customers
+  disabled: true
+  runtime: nodejs20.x
+  uses: http-get-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: none
+        username: ''
+        password: ''
+        token:
+      body:
+        contentType: none
+        fields: []
+        mode: fields
+        type: raw
+      headers:
+      - name: xero-tenant-id
+        value: c00c1704-0af5-43ad-94b2-f5ecb56c8957
+      - name: Content-Type
+        value: application/json
+      - name: Accept
+        value: application/json
+      - name: Authorization
+        value: Bearer {{steps.get_xero_access_token.$return_value.Connection.access_token}}
+      method: GET
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://api.xero.com/api.xro/2.0/contacts?where=isCustomer=true
+      tab: Headers
+- namespace: get_xero_creditnotes
+  disabled: true
+  runtime: nodejs20.x
+  uses: http-get-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: none
+        username: ''
+        password: ''
+        token:
+      body:
+        contentType: none
+        fields: []
+        mode: fields
+        type: raw
+      headers:
+      - name: xero-tenant-id
+        value: "{{steps.trigger.event.body.tenantId}}"
+      - name: Content-Type
+        value: application/json
+      - name: Accept
+        value: application/json
+      - name: Authorization
+        value: Bearer {{steps.get_xero_access_token.$return_value.Connection.access_token}}
+      method: GET
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://api.xero.com/api.xro/2.0/creditnotes?where=Type%3D%3D%22ACCRECCREDIT%22%20AND%20(Status%3D%3D%22PAID%22%20OR%20Status%3D%3D%22SUBMITTED%22%20OR%20Status%3D%3D%22DRAFT%22%20OR%20Status%3D%3D%22AUTHORISED%22)
+      tab: Headers
+- namespace: sort_invoices_and_match_country
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./sort_invoices_and_match_country/entry.js"
+- namespace: only_usa_transactions
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./only_usa_transactions/entry.js"
+- namespace: all_posts_for_debugging
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./all_posts_for_debugging/entry.js"
+- namespace: send_invoices_to_main_gateway
+  disabled: true
+  runtime: nodejs20.x
+  uses: "./send_invoices_to_main_gateway/entry.js"
+- namespace: code
+  disabled: true
+  runtime: python3.12
+  uses: "./code/entry.py"
+

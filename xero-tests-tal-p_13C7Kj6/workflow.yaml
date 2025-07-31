@@ -1,0 +1,6 @@
+schema: workflow/2022.04
+name: Xero Tests (Tal)
+triggers:
+- id: hi_xQHkERB
+- id: sub_ArUXnJ9
+

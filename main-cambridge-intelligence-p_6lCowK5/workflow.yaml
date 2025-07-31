@@ -1,0 +1,20 @@
+schema: workflow/2022.04
+name: main-cambridge-intelligence
+settings:
+  error_notification: true
+triggers:
+- id: hi_DlHdnyp
+steps:
+- namespace: xero_webhook_auth
+  runtime: nodejs20.x
+  uses: "./xero_webhook_auth/entry.js"
+- namespace: send_cambridge_to_main_flow
+  runtime: python3.12
+  uses: "./send_cambridge_to_main_flow/entry.py"
+- namespace: return_http_response
+  runtime: nodejs20.x
+  uses: http-return-http-response@0.0.3
+  props:
+    resStatusCode: "{{steps.xero_webhook_auth1.$return_value.response}}"
+    resBody: "{{steps.xero_webhook_auth1.$return_value.computed_hash}}"
+

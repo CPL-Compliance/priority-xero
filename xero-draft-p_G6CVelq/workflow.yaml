@@ -1,0 +1,187 @@
+schema: workflow/2022.04
+name: Xero Draft
+inactive: true
+settings:
+  error_notification: true
+  lambda_memory: 1280
+triggers:
+- id: dc_kjuyRNg
+steps:
+- namespace: get_trigger_invoice
+  runtime: nodejs18.x
+  uses: xero_accounting_api-get-invoice@0.1.1
+  props:
+    tenant_id: "{{steps.trigger.event.tenantId}}"
+    invoice_id: "{{steps.trigger.event.resourceId}}"
+- namespace: get_history_dates
+  runtime: nodejs18.x
+  uses: xero_accounting_api-get-history-of-changes@0.1.1
+  props:
+    tenant_id: "{{steps.trigger.event.tenantId}}"
+- namespace: get_token
+  runtime: nodejs18.x
+  uses: http-put-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: none
+        username: ''
+        password: ''
+        token: ''
+      body:
+        contentType: application/json
+        fields:
+        - name: clientId
+          value: "{{process.env.client_id_tappit}}"
+        - name: clientSecret
+          value: "{{process.env.client_secret_tappit}}"
+        mode: fields
+        type: fields
+      headers:
+      - name: ''
+        value: ''
+        disabled: true
+      method: POST
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://demo.complyt.io/v1/token
+      tab: Body
+- namespace: get_rates
+  runtime: nodejs18.x
+  uses: "./get_rates/entry.js"
+- namespace: data_mapper
+  runtime: nodejs18.x
+  uses: "./data_mapper/entry.js"
+- namespace: put_customer
+  runtime: nodejs18.x
+  uses: http-put-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: bearer
+        username: ''
+        password: ''
+        token: "{{steps.get_token.$return_value.accessToken}}"
+      body:
+        contentType: application/json
+        fields:
+        - name: externalId
+          value: "{{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.ContactID}}"
+        - name: source
+          value: '6'
+        - name: name
+          value: "{{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.Name}}"
+        - name: customerType
+          value: RETAIL
+        - name: externalTimestamps.createdDate
+          value: |2-
+             { "createdDate": {{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.UpdatedDateUTC}},
+            "updatedDate": {{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.UpdatedDateUTC}} }
+        - name: email
+          value: "{{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.EmailAddress}}"
+        - name: address.state
+          value: '{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Addresses[0].Region}}'
+        - name: address.city
+          value: '{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Addresses[0].City}}'
+        - name: address.country
+          value: '{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Addresses[0].Country}}'
+        - name: address.zip
+          value: '{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Addresses[0].PostalCode}}'
+        - name: address.street
+          value: '{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Addresses[0].AddressLine1}}'
+        mode: raw
+        type: raw
+        raw: |-
+          {
+             "externalId": "{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.ContactID}}",
+              "source": "6",
+              "name": "{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.Name}}",
+              "address": {{steps.data_mapper["$return_value"].shippingAddress}},
+                  "email": "{{steps.get_trigger_invoice["$return_value"].Invoices[0].Contact.EmailAddress}}",
+                 "externalTimestamps": {
+                              "createdDate": "{{steps.get_history_dates["$return_value"].contactCreatedDate}}",
+                              "updatedDate": "{{steps.get_history_dates["$return_value"].contactUpdatedDate}}"
+                  },
+                  "customerType": "RETAIL"
+          }
+      headers:
+      - name: ''
+        value: ''
+        disabled: true
+      method: PUT
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://demo.complyt.io/v1/customers/source/6/externalId/{{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.ContactID}}
+      tab: Body
+- namespace: put_transaction
+  runtime: nodejs18.x
+  uses: http-custom-request@1.1.1
+  props:
+    httpRequest:
+      auth:
+        type: bearer
+        username: ''
+        password: ''
+        token: '{{steps.get_token["$return_value"].accessToken}}'
+      body:
+        contentType: application/json
+        fields:
+        - name: ''
+          value: ''
+          disabled: true
+        mode: raw
+        type: raw
+        raw: |-
+          {
+              "externalId": "{{steps.get_trigger_invoice["$return_value"].Invoices[0].InvoiceID}}",
+              "source": "6",
+              "documentName": "{{steps.get_trigger_invoice["$return_value"].Invoices[0].InvoiceNumber}}",
+              "items": {{steps.data_mapper["$return_value"].items}},
+              "shippingAddress": {{steps.data_mapper["$return_value"].shippingAddress}},
+              "customerId": "{{steps.put_customer["$return_value"].complytId}}",
+              "transactionStatus": "ACTIVE",
+              "transactionType": "INVOICE",
+              "externalTimestamps": {
+                  "createdDate":  "{{steps.get_history_dates["$return_value"].invoiceCreatedDate}}",
+                  "updatedDate": "{{steps.get_history_dates["$return_value"].invoiceUpdatedDate}}"
+              }
+          }
+      headers: []
+      method: PUT
+      params:
+      - name: ''
+        value: ''
+        disabled: true
+      url: https://demo.complyt.io/v1/transactions/source/6/externalId/{{steps.get_trigger_invoice["$return_value"].Invoices[0].InvoiceID}}
+      tab: Body
+- namespace: get_line_items
+  runtime: nodejs18.x
+  uses: "./get_line_items/entry.js"
+- namespace: get_credit_notes
+  runtime: nodejs18.x
+  uses: "./get_credit_notes/entry.js"
+- namespace: put_credit_notes
+  runtime: nodejs18.x
+  uses: "./put_credit_notes/entry.js"
+  props:
+    url: https://demo.complyt.io/v1/transactions/source/6/externalId/
+- namespace: condition
+  runtime: nodejs18.x
+  uses: "./condition/entry.js"
+- namespace: update_invoice
+  runtime: nodejs18.x
+  uses: xero_accounting_api-xero-create-sales-invoice@0.3.2
+  props:
+    tenantId:
+      __lv:
+        label: Demo Company (US)
+        value: 4e6d3fc4-130a-485d-aca5-c098c41c4d77
+    contactId: "{{steps.get_trigger_invoice.$return_value.Invoices[0].Contact.ContactID}}"
+    lineItems: "{{steps.get_line_items.$return_value.lineItems}}"
+    lineAmountType: Exclusive
+    invoiceNumber: "{{steps.get_trigger_invoice.$return_value.Invoices[0].InvoiceNumber}}"
+

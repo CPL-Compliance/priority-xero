@@ -1,0 +1,170 @@
+schema: workflow/2022.04
+name: Xero Authentication
+settings:
+  error_notification: true
+  lambda_memory: 512
+triggers:
+- id: hi_BpHaLee
+steps:
+- namespace: getCodeAndState
+  runtime: python3.12
+  uses: "./getCodeAndState/entry.py"
+- namespace: updateXeroAuthorizartionCodes
+  runtime: nodejs20.x
+  uses: data_stores-add-update-record@0.0.9
+  props:
+    dataStore:
+      storeId: ds_1OuaeN
+    key: "{{steps.getCodeAndState.$return_value.State}}"
+    value: "{{steps.getCodeAndState.$return_value.code}}"
+- namespace: getAccessToken
+  runtime: python3.12
+  uses: "./getAccessToken/entry.py"
+- namespace: updateXeroAccessTokens
+  runtime: nodejs20.x
+  uses: data_stores-add-update-record@0.0.9
+  props:
+    dataStore:
+      storeId: ds_9PudAG
+    key: "{{steps.getCodeAndState.$return_value.State}}"
+    value: "{\"access_token\": \"{{steps.getAccessToken.$return_value.access_token}}\",
+      \n\"refresh_token\": \"{{steps.getAccessToken.$return_value.refresh_token}}\"}"
+- namespace: get_user_info
+  runtime: nodejs20.x
+  uses: "./get_user_info/entry.js"
+- namespace: tenant_auth_setup
+  runtime: nodejs20.x
+  uses: "./tenant_auth_setup/entry.js"
+  props:
+    xeroAuthorizationCodes:
+      storeId: ds_1OuaeN
+    xeroAccessTokens:
+      storeId: ds_9PudAG
+- namespace: notify_internally
+  runtime: nodejs20.x
+  uses: microsoft_teams-send-chat-message@0.0.8
+  props:
+    microsoftTeams:
+      authProvisionId: apn_mnhG0ry
+    chatId:
+      __lv:
+        label: Tal Mirzai, Complyt Integrations
+        value: 19:119e1794-2914-4e98-8bea-838333056007_e98deb43-2b38-42b8-8925-57658a059114@unq.gbl.spaces
+    message: "<div style=\"font-family: sans-serif; font-size: 14px; line-height:
+      1.5; padding: 16px; background-color: #f9f9f9; border: 1px solid #ddd; border-radius:
+      8px; max-width: 600px;\">\n  <div style=\"font-size: 16px; font-weight: bold;
+      margin-bottom: 10px;\">\U0001F517 New Xero Connection</div>\n  <p>A new user
+      has connected the Complyt app to their Xero account.</p>\n\n  <p><strong>Connected
+      by:</strong> {{steps.get_user_info.$return_value.user.name}} (<a href=\"mailto:{{steps.get_user_info.$return_value.user.email}}\">{{steps.get_user_info.$return_value.user.email}}</a>)</p>\n
+      \ <p><strong>Xero User ID:</strong> {{steps.get_user_info.$return_value.user.xero_userid}}</p>\n
+      \ <p><strong>Connection Time (UTC):</strong> {{steps.get_user_info.$return_value.newlyConnectedTenants[0].updatedDateUtc}}</p>\n\n
+      \ <p><strong>Tenant Name:</strong> {{steps.get_user_info.$return_value.newlyConnectedTenants[0].tenantName}}</p>\n
+      \ <p><strong>Tenant ID:</strong> {{steps.get_user_info.$return_value.newlyConnectedTenants[0].tenantId}}</p>\n
+      \ <p><strong>Auth Event ID:</strong> {{steps.get_user_info.$return_value.newlyConnectedTenants[0].authEventId}}</p>\n\n
+      \ <hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ccc;\">\n\n
+      \ <p><strong>\U0001F464 Sales follow-up needed:</strong> Who from the sales
+      team will reach out to <a href=\"mailto:{{steps.get_user_info.$return_value.user.email}}\">{{steps.get_user_info.$return_value.user.email}}</a>?</p>\n\n
+      \ <p style=\"font-size: 12px; color: #888;\">This notification was generated
+      automatically.</p>\n</div>\n"
+    contentType: html
+- namespace: send_email
+  runtime: nodejs20.x
+  uses: microsoft_outlook-send-email@0.0.14
+  props:
+    microsoftOutlook:
+      authProvisionId: apn_arhA5xM
+    recipients: []
+    ccRecipients:
+    - integration@complyt.io
+    subject: 'Complyt + Xero: Connection Complete, Activation Next'
+    contentType: html
+    content: "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\"
+      />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n
+      \ <title>Complyt + Xero Connected</title>\n  <style>\n    body {\n      font-family:
+      -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\",
+      sans-serif;\n      background-color: #f7fafd;\n      margin: 0;\n      padding:
+      0;\n      color: #2b2b2b;\n    }\n    .container {\n      max-width: 620px;\n
+      \     margin: 0 auto;\n      background-color: #ffffff;\n      border-radius:
+      12px;\n      overflow: hidden;\n      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);\n
+      \   }\n    .header {\n      text-align: center;\n      padding: 40px 30px 10px;\n
+      \   }\n    .header img {\n      width: 120px;\n      margin-bottom: 20px;\n
+      \   }\n    .content {\n      padding: 0 30px 30px;\n    }\n    h1 {\n      color:
+      #003366;\n      font-size: 22px;\n      margin-bottom: 12px;\n    }\n    p {\n
+      \     font-size: 16px;\n      line-height: 1.5;\n      margin: 0 0 16px;\n    }\n
+      \   .highlight {\n      color: #0177FB;\n      font-weight: bold;\n    }\n    .bullet-list
+      {\n      padding-left: 20px;\n      margin-top: 12px;\n      margin-bottom:
+      24px;\n    }\n    .bullet-list li {\n      margin-bottom: 10px;\n    }\n    .cta-button
+      {\n      display: inline-block;\n      background-color: #0177FB;\n      color:
+      #ffffff !important;\n      text-decoration: none;\n      font-weight: 500;\n
+      \     padding: 12px 24px;\n      border-radius: 6px;\n      font-size: 15px;\n
+      \   }\n    .footer {\n      font-size: 13px;\n      color: #666;\n      text-align:
+      center;\n      padding: 24px 30px;\n    }\n    a {\n      color: #0177FB;\n
+      \   }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n
+      \     <img src=\"https://complyt.io/wp-content/uploads/2024/03/LOGO.svg\" alt=\"Complyt
+      Logo\" />\n    </div>\n    <div class=\"content\">\n      <h1>You've Successfully
+      Connected Complyt to Xero \U0001F389</h1>\n      <p>\n        Thanks for completing
+      the connection process! While your app is now\n        <span class=\"highlight\">successfully
+      connected</span>, please note that it’s not yet <span class=\"highlight\">activated</span>.\n
+      \     </p>\n      <p>\n        A Complyt specialist will reach out shortly to
+      walk you through the activation steps and ensure your setup is ready for tax
+      tracking.\n      </p>\n      <p>\n        Curious about what happens next or
+      how to get the most out of our Sales Tax Engine? Explore our integration overview:\n
+      \     </p>\n      <ul class=\"bullet-list\">\n        <li>✅ What the Complyt–Xero
+      integration includes</li>\n        <li>✅ How tax calculation works in real time</li>\n
+      \       <li>✅ Common use cases and FAQs</li>\n      </ul>\n      <a href=\"https://coda.io/d/_dTiCVp71Eil/Xero-Integration-Overview-User-Manual_su7SwoQY\"
+      class=\"cta-button\">View the Integration Overview</a>\n    </div>\n    <div
+      class=\"footer\">\n      Have questions? Just reply to this email or contact
+      us at <a href=\"mailto:integrations@complyt.io\">integration@complyt.io</a>\n
+      \   </div>\n  </div>\n</body>\n</html>\n"
+- namespace: return_http_response
+  runtime: nodejs20.x
+  uses: http-return-http-response@0.0.3
+  props:
+    resStatusCode: 200
+    resBody: "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\"
+      />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"/>\n
+      \ <title>Complyt | Connected to Xero</title>\n  <style>\n    * {\n      box-sizing:
+      border-box;\n    }\n\n    body {\n      font-family: \"Segoe UI\", Tahoma, Geneva,
+      Verdana, sans-serif;\n      margin: 0;\n      padding: 0;\n      background-color:
+      #f8f9fa;\n      position: relative;\n      overflow-x: hidden;\n    }\n\n    .background-wrapper
+      {\n      position: fixed;\n      top: 0;\n      left: 0;\n      z-index: -1;\n
+      \     width: 100%;\n      height: 100%;\n      overflow: hidden;\n    }\n\n
+      \   .background-wrapper img {\n      width: 100%;\n      height: auto;\n      object-fit:
+      cover;\n    }\n\n    .card {\n      background: rgba(255, 255, 255, 0.94);\n
+      \     max-width: 640px;\n      margin: 80px auto;\n      padding: 40px 32px;\n
+      \     border-radius: 16px;\n      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);\n
+      \     text-align: center;\n      backdrop-filter: blur(5px);\n    }\n\n    .logo
+      {\n      width: 160px;\n      margin-bottom: 24px;\n    }\n\n    h1 {\n      color:
+      #0070f3;\n      font-size: 28px;\n      margin-bottom: 10px;\n    }\n\n    h2
+      {\n      color: #222;\n      font-weight: normal;\n      font-size: 20px;\n
+      \     margin: 10px 0 24px;\n    }\n\n    p {\n      font-size: 16px;\n      color:
+      #333;\n      margin: 12px 0;\n    }\n\n    a {\n      color: #0070f3;\n      text-decoration:
+      none;\n    }\n\n    a:hover {\n      text-decoration: underline;\n    }\n\n
+      \   .checklist {\n      list-style: none;\n      padding: 0;\n      margin:
+      20px 0;\n      text-align: left;\n    }\n\n    .checklist li {\n      margin-bottom:
+      10px;\n      font-size: 16px;\n    }\n\n    .small {\n      color: #666;\n      font-size:
+      14px;\n      margin-top: 25px;\n    }\n\n    .bold {\n      font-weight: bold;\n
+      \   }\n  </style>\n\n  <script>\n    window.onload = function () {\n      let
+      seconds = 20;\n      const countdown = document.getElementById(\"countdown\");\n
+      \     const interval = setInterval(() => {\n        seconds--;\n        countdown.innerText
+      = seconds;\n        if (seconds <= 0) {\n          clearInterval(interval);\n
+      \         window.location.href = \"https://complyt.io\";\n        }\n      },
+      1000);\n    };\n  </script>\n</head>\n\n<body>\n  <div class=\"background-wrapper\">\n
+      \   <picture fetchpriority=\"high\" class=\"about_abs_bg\">\n      <source type=\"image/webp\"
+      srcset=\"https://complyt.io/wp-content/uploads/2023/11/about-top-1.png.webp\">\n
+      \     <img fetchpriority=\"high\" src=\"https://complyt.io/wp-content/uploads/2023/11/about-top-1.png\"
+      alt=\"about_bg\" width=\"1920\" height=\"1620\">\n    </picture>\n  </div>\n\n
+      \ <div class=\"card\">\n    <img src=\"https://complyt.io/wp-content/uploads/2024/03/LOGO.svg\"
+      alt=\"Complyt Logo\" class=\"logo\" />\n\n    <h1>Welcome to Complyt, {{steps.get_user_info.$return_value.user.given_name}}
+      \U0001F44B</h1>\n    <h2>Your connection was successful — activation is coming
+      next</h2>\n\n    <p><span class=\"bold\">Email:</span> <a href=\"mailto:{{steps.get_user_info.$return_value.user.email}}\">{{steps.get_user_info.$return_value.user.email}}</a></p>\n
+      \   <p><span class=\"bold\">Company:</span> {{steps.get_user_info.$return_value.newlyConnectedTenants[0].tenantName}}</p>\n\n
+      \   <ul class=\"checklist\">\n      <li>✅ You’ve connected your Xero account
+      successfully</li>\n      <li>✅ Your account is not yet activated</li>\n      <li>✅
+      A Complyt specialist will reach out to guide you</li>\n    </ul>\n\n    <p>We’ll
+      help you activate your account and configure your tax setup.</p>\n    <p>An
+      email with next steps will also be sent to <span class=\"bold\">{{steps.get_user_info.$return_value.user.email}}</span>.</p>\n\n
+      \   <p class=\"small\">\n      You can close this window or wait — redirecting
+      to <a href=\"https://complyt.io\">complyt.io</a> in <span id=\"countdown\">20</span>
+      seconds...\n    </p>\n  </div>\n</body>\n</html>\n"
+

@@ -1,0 +1,17 @@
+schema: workflow/2022.04
+name: Xero Refresh Token
+settings:
+  error_notification: true
+triggers:
+- id: ti_EoTP0LR
+steps:
+- namespace: refreshAllAccessTokens
+  runtime: python3.12
+  uses: "./refreshAllAccessTokens/entry.py"
+  props:
+    __configurableProps:
+    - name: data_store
+      type: data_store
+    data_store:
+      storeId: ds_9PudAG
+
