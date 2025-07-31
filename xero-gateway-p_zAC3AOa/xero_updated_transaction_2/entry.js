@@ -361,7 +361,7 @@ async function createOrUpdateTaxRate(taxRatePercentage, steps, xeroEndpoint, acc
     
     const allTaxRates = taxRatesResponse?.TaxRates || [];
     
-    // ✅ ONLY look for "Sales Tax" rates, not Avalara state-specific rates
+    // ✅ ONLY look for "Sales Tax" rates, not Avalara state-specific rate
     const salesTaxRates = allTaxRates.filter(rate => 
       rate.Status === "ACTIVE" && rate.Name.includes("Sales Tax")
     );
