@@ -359,15 +359,18 @@ async function createOrUpdateTaxRate(taxRatePercentage, steps, xeroEndpoint, acc
       },
     });
     
+    const allTaxRates = taxRatesResponse?.TaxRates || [];
+    
+    // ✅ ONLY look for "Sales Tax" rates, not Avalara state-specific rates
+    const salesTaxRates = allTaxRates.filter(rate => 
+      rate.Status === "ACTIVE" && rate.Name.includes("Sales Tax")
+    );
 
-    //const taxRates = taxRatesResponse?.data?.TaxRates || [];
-    const taxRates = taxRatesResponse?.TaxRates || [];
-
-    // Find matching tax rate
-    let existingTaxRate = taxRates.find(rate => rate.DisplayTaxRate === Number(taxRatePercentage));
+    // Find matching "Sales Tax" rate ONLY
+    let existingTaxRate = salesTaxRates.find(rate => rate.DisplayTaxRate === Number(taxRatePercentage));
 
     if (existingTaxRate) {
-      console.log(`🔍 Found existing tax rate: ${existingTaxRate.TaxType}`);
+      console.log(`🔍 Found existing Sales Tax rate: ${existingTaxRate.TaxType}`);
 
       // ✅ If CanApplyToRevenue is false, update it
       if (!existingTaxRate.CanApplyToRevenue) {
@@ -404,12 +407,12 @@ async function createOrUpdateTaxRate(taxRatePercentage, steps, xeroEndpoint, acc
       }
 
       // ✅ If it's already allowed for revenue, use it
-      console.log(`✅ Using Existing TaxType '${existingTaxRate.TaxType}'`);
+      console.log(`✅ Using Existing Sales Tax TaxType '${existingTaxRate.TaxType}'`);
       return existingTaxRate.TaxType;
     }
 
-    // 🚨 If no existing tax rate found, create a new one
-    console.log(`🚨 No matching tax rate found. Creating a new one...`);
+    // 🚨 If no existing "Sales Tax" rate found, create a new one
+    console.log(`🚨 No matching "Sales Tax" rate found for ${taxRatePercentage}%. Creating a new one...`);
     return await createTaxRate(taxRatePercentage, steps, xeroEndpoint, accessToken, tenantId, $);
 
   } catch (error) {
