@@ -7,20 +7,19 @@ export default defineComponent({
     const FORCE_SALES_TAX = false;
     // Xero API Configuration
     const xeroEndpoint = "https://api.xero.com/api.xro/2.0/TaxRates";
-    // const accessToken = steps.Xero_Event_Gateway.$return_value.xero_token;
     const event = steps.Xero_Event_Gateway?.$return_value || {};
     const headers = event.headers || {};
     const accessToken = headers.new_xero_token || event.xero_token || "MISSING_TOKEN";
     console.log("Xero Token:", accessToken);
 
-    // const tenantId = steps.trigger.event.tenantId;
     const tenantId = steps.Xero_Event_Gateway.$return_value.tenantId;
-    // Extract & Filter only the ACTIVE “Sales Tax” rates
+    
+    // Extract & Filter only the ACTIVE "Sales Tax" rates
     const originalTaxRates = steps.HTTP_Calls.$return_value
       .originalTaxRates.TaxRates;
     const activeTaxRates = originalTaxRates.filter(rate => rate.Status === "ACTIVE" && rate.Name.includes("Sales Tax"));
 
-   // Tax Rate Map: DisplayTaxRate -> TaxType (now only for “Sales Tax” codes)
+   // Tax Rate Map: DisplayTaxRate -> TaxType (now only for "Sales Tax" codes)
     const taxRateMap = new Map(activeTaxRates.map(rate => [rate.DisplayTaxRate, rate.TaxType]));
 
     console.log("Filtered Active Tax Rates:", Array.from(taxRateMap.entries()));
@@ -35,88 +34,74 @@ export default defineComponent({
     let finalLineItems = [];
     let totalTaxAmount = 0;
 
-
     // Process Each Line Item
-for (const [index, originalItem] of originalLineItems.entries()) {
-  if (!originalItem) continue;
+    for (const [index, originalItem] of originalLineItems.entries()) {
+      if (!originalItem) continue;
 
-  console.log(`Processing Item ${index}:`, JSON.stringify(originalItem));
+      console.log(`Processing Item ${index}:`, JSON.stringify(originalItem));
 
-  // Retrieve Complyt Item
-  const complytItem = complytItemsMap.get(originalItem.LineItemID);
+      // Retrieve Complyt Item
+      const complytItem = complytItemsMap.get(originalItem.LineItemID);
 
-  let taxType = originalItem.TaxType;  // ✅ Keep original tax type
-  let taxAmount = calculateTaxAmount(originalItem, complytItem);
+      let taxType = originalItem.TaxType;  // ✅ Keep original tax type
+      let taxAmount = calculateTaxAmount(originalItem, complytItem);
 
-const requestedTaxType = steps.HTTP_Calls.$return_value.taxRates.requested.TaxType;
-  
-// Only recalc if either the customer asked (REQUESTED) or we’ve forced it
-if (FORCE_SALES_TAX || originalItem.TaxType === requestedTaxType) {
-  console.log(`🚨 TaxType is "REQUEST" (or ${requestedTaxType}) for ${originalItem.Description}. Calling determineTaxType()...`);
-  taxType = await determineTaxType(originalItem, complytItem, taxRateMap, activeTaxRates, steps, xeroEndpoint, accessToken, tenantId, $);
-  console.log(`✅ After determineTaxType(): TaxType=${taxType} for ${originalItem.Description}`);
-}
+      const requestedTaxType = steps.HTTP_Calls.$return_value.taxRates.requested.TaxType;
+      
+      // Only recalc if either the customer asked (REQUESTED) or we've forced it
+      if (FORCE_SALES_TAX || originalItem.TaxType === requestedTaxType) {
+        console.log(`🚨 TaxType is "REQUEST" (or ${requestedTaxType}) for ${originalItem.Description}. Calling determineTaxType()...`);
+        taxType = await determineTaxType(originalItem, complytItem, taxRateMap, activeTaxRates, steps, xeroEndpoint, accessToken, tenantId, $);
+        console.log(`✅ After determineTaxType(): TaxType=${taxType} for ${originalItem.Description}`);
+      }
 
+      if (steps.Xero_Event_Gateway.$return_value.line_item_tax) {
+        // 🚨 Override Tax for line items and sum it up separately
+        console.log(`🚨 Overriding Tax for ${originalItem.Description} - Setting to "NONE"`);
+        taxType = "NONE";
+        totalTaxAmount += taxAmount;  // ✅ Collect tax to add in separate line
+        taxAmount = 0; // ✅ Zero out tax for individual items
+      }
 
-  if (steps.Xero_Event_Gateway.$return_value.line_item_tax) {
-    // 🚨 Override Tax for line items and sum it up separately
-    console.log(`🚨 Overriding Tax for ${originalItem.Description} - Setting to "NONE"`);
-    taxType = "NONE";
-    totalTaxAmount += taxAmount;  // ✅ Collect tax to add in separate line
-    taxAmount = 0; // ✅ Zero out tax for individual items
-  }
+      console.log(`✅ Final Tax for ${originalItem.Description}: TaxType=${taxType}, TaxAmount=${taxAmount}`);
 
-  console.log(`✅ Final Tax for ${originalItem.Description}: TaxType=${taxType}, TaxAmount=${taxAmount}`);
+      // ✅ PRESERVE ORIGINAL XERO VALUES - Don't recalculate anything
+      const newLineItem = {
+        LineItemID: originalItem.LineItemID,
+        UnitAmount: originalItem.UnitAmount,
+        Quantity: originalItem.Quantity,
+        ItemCode: originalItem.ItemCode || "",
+        Description: originalItem.Description,
+        LineAmount: originalItem.LineAmount,  // ✅ Keep original LineAmount
+        TaxType: taxType,
+        TaxAmount: taxAmount,
+        Tracking: originalItem.Tracking || [],
+        AccountCode: originalItem.AccountCode,
+      };
 
-  // Construct Updated Line Item
-  const newLineItem = {
-    LineItemID: originalItem.LineItemID,
-    UnitAmount: originalItem.UnitAmount,
-    Quantity: originalItem.Quantity,
-    ItemCode: originalItem.ItemCode || "",
-    Description: originalItem.Description,
-    LineAmount: originalItem.LineAmount,
-    TaxType: taxType,
-    TaxAmount: taxAmount,
-    Tracking: originalItem.Tracking || [],
-    AccountCode: originalItem.AccountCode,
-  };
+      // ✅ PRESERVE ORIGINAL DISCOUNT RATE - Don't recalculate from Complyt
+      if (originalItem.DiscountRate !== undefined && originalItem.DiscountRate > 0) {
+        newLineItem.DiscountRate = originalItem.DiscountRate;
+        console.log(`✅ Preserving original DiscountRate: ${originalItem.DiscountRate}% for "${originalItem.Description}"`);
+      }
 
-// ✅ Add DiscountRate only if the complyt item has a meaningful discount
-if (
-  complytItem?.discount &&
-  complytItem.discount > 0 &&
-  complytItem.unitPrice &&
-  complytItem.quantity
-) {
-  const fullAmount = complytItem.unitPrice * complytItem.quantity + complytItem.discount;
-  if (fullAmount > 0) {
-    const discountRate = (complytItem.discount / fullAmount) * 100;
-    newLineItem.DiscountRate = parseFloat(discountRate.toFixed(2));
-    console.log(`✅ Adding DiscountRate: ${newLineItem.DiscountRate}% for "${originalItem.Description}"`);
-  }
-} else {
-  console.log(`ℹ️ No discount applied to "${originalItem.Description}"`);
-}
+      finalLineItems.push(newLineItem);
+    }
 
-finalLineItems.push(newLineItem);
+    // ✅ If `line_item_tax = true`, add a separate tax line item
+    if (steps.Xero_Event_Gateway.$return_value.line_item_tax && totalTaxAmount > 0) {
+      console.log(`✅ Adding Sales Tax Line Item: ${totalTaxAmount.toFixed(2)}`);
 
-}
-
-// ✅ If `line_item_tax = true`, add a separate tax line item
-if (steps.Xero_Event_Gateway.$return_value.line_item_tax && totalTaxAmount > 0) {
-  console.log(`✅ Adding Sales Tax Line Item: ${totalTaxAmount.toFixed(2)}`);
-
-  finalLineItems.push({
-    Description: "Sales Tax",
-    UnitAmount: totalTaxAmount,
-    Quantity: 1,
-    LineAmount: totalTaxAmount,
-    TaxType: "NONE",
-    TaxAmount: 0,
-    AccountCode: finalLineItems[0]?.AccountCode || "TAX_ACCOUNT",
-  });
-}
+      finalLineItems.push({
+        Description: "Sales Tax",
+        UnitAmount: totalTaxAmount,
+        Quantity: 1,
+        LineAmount: totalTaxAmount,
+        TaxType: "NONE",
+        TaxAmount: 0,
+        AccountCode: finalLineItems[0]?.AccountCode || "TAX_ACCOUNT",
+      });
+    }
 
     // Validate & Prepare Payload
     const validatedLineItems = validateLineItems(finalLineItems);
@@ -174,12 +159,9 @@ async function determineTaxType(originalItem, complytItem, taxRateMap, activeTax
     }
   }
 
-
-
   // Create or update tax rate
   return await createOrUpdateTaxRate(taxRatePercentage, steps, xeroEndpoint, accessToken, tenantId, $);
 }
-
 
 async function createTaxRate(taxRatePercentage, steps, xeroEndpoint, accessToken, tenantId, $) {
   // Fetch the country code from the organisation data
@@ -244,12 +226,10 @@ async function createTaxRate(taxRatePercentage, steps, xeroEndpoint, accessToken
       data: taxRatePayload,
     });
 
-
     const newTaxRate = response?.TaxRates?.[0]?.TaxType || "NONE";
     console.log(`Created New Tax Rate: ${newTaxRate}`);
     return newTaxRate;
 }
-
 
 /**
  * Calculates the tax amount for a line item.
@@ -264,15 +244,13 @@ function calculateTaxAmount(originalItem, complytItem) {
     taxAmount = complytItem.totalPrice * complytItem.manualSalesTaxRate;
     console.log(`🔄 Using manual sales tax rate for ${originalItem.Description}: ${complytItem.manualSalesTaxRate} -> ${taxAmount.toFixed(2)}`);
   } else {
-    // ✅ Otherwise, use calculated sales tax rate
-    taxAmount = complytItem.totalPrice * (complytItem.salesTaxRates?.taxRate || 0);
+    // ✅ Use calculated sales tax rate on the LINE AMOUNT (not total price)
+    taxAmount = originalItem.LineAmount * (complytItem.salesTaxRates?.taxRate || 0);
     console.log(`✅ Using calculated tax rate for ${originalItem.Description}: ${complytItem.salesTaxRates?.taxRate || 0} -> ${taxAmount.toFixed(2)}`);
   }
 
   return parseFloat(taxAmount.toFixed(2));  // ✅ Ensures correct rounding
 }
-
-
 
 /**
  * Adds a new sales tax line item if required.
@@ -282,8 +260,6 @@ async function addSalesTaxLineItem(finalLineItems, totalTaxAmount, taxRateMap, x
     console.warn("🚨 No total tax amount to add.");
     return;
   }
-
-  
 
   const totalItemsAmount = steps.complyt_put_transactions.$return_value.response.totalItemsAmount || 1;
   const taxRatePercentage = (totalTaxAmount / totalItemsAmount) * 100;
@@ -339,7 +315,6 @@ async function updateTaxRate(taxType, xeroEndpoint, accessToken, tenantId, $) {
       data: taxRatePayload,
     });
     
-
     console.log(`✅ Successfully Updated Tax Rate '${taxType}' to Apply to Revenue`);
     return taxType;
   } catch (error) {
