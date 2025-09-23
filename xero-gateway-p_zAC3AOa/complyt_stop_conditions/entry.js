@@ -50,7 +50,7 @@ export default defineComponent({
       steps.Xero_Event_Gateway.$return_value.tax_rate_type_map;
     const allowedTaxTypes = new Set([requestedTaxType]);
 
-    // 🔎 NEW RULE: if there’s a "Sales Tax" line AND no other line requests Complyt calc → stop
+    // 🔎 NEW RULE: if there's a "Sales Tax" line AND no other line requests Complyt calc → stop
     const isSalesTaxLine = (li) =>
       typeof li?.Description === "string" &&
       li.Description.trim() === "Sales Tax";  // <-- exact, case-sensitive match
@@ -83,6 +83,7 @@ export default defineComponent({
       if (hasApprovedChange) {
         console.log("url: ", `https://api.complyt.io/v1/transactions/source/6/externalId/${invoiceId}`);
         let transactionTypeFromComplyt;
+        let transactionExists = false;
 
         try {
           const transactionResponse = await axios.get(
@@ -97,14 +98,28 @@ export default defineComponent({
 
           console.log("Transaction Response:", transactionResponse.data);
           transactionTypeFromComplyt = transactionResponse.data.transactionType;
+          transactionExists = true;
         } catch (error) {
           console.log("Error fetching transaction from Complyt:", error.response?.data || error.message);
+          
+          // Handle 404 specifically - transaction doesn't exist, should continue processing
+          if (error.response?.status === 404) {
+            console.log("Transaction not found in Complyt (404) - will create new transaction");
+            transactionExists = false;
+          } else {
+            // For other errors, assume transaction doesn't exist and continue
+            console.log("Non-404 error occurred, assuming transaction doesn't exist - continuing");
+            transactionExists = false;
+          }
         }
 
-        if (transactionTypeFromComplyt !== "ESTIMATE") {
+        // Only exit if transaction exists in Complyt AND is already processed (not an ESTIMATE)
+        if (transactionExists && transactionTypeFromComplyt !== "ESTIMATE") {
           $.flow.exit("'Approved' & already set to INVOICE/CREDIT_MEMO");
         } else {
+          // Transaction either doesn't exist (404) or exists as ESTIMATE - should process
           draft_to_invoice = true;
+          console.log("Will process transaction - either doesn't exist in Complyt or is an ESTIMATE");
         }
 
       } else {
