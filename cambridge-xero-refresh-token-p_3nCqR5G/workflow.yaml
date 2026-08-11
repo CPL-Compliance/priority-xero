@@ -4,6 +4,7 @@ settings:
   error_notification: true
 triggers:
 - id: ti_7qTbmnJ
+  disabled: true
 steps:
 - namespace: refreshAllAccessTokens
   runtime: python3.12
